@@ -4,108 +4,55 @@ import subprocess
 import threading
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 
+# Flask Web-GUI
 app = Flask(__name__)
 
 # Konfiguration
-INTERVAL = 900
+INTERVAL = 900  # 15 Minuten (900 Sekunden)
 UPLOAD_SERVER = "ftp://yourserver.com/upload"
 IMAGE_DIR = "/home/pi/OpenDSLRCam/images"
 LOG_FILE = "/home/pi/OpenDSLRCam/logs/opendslrcam.log"
 CONFIG_FILE = "/home/pi/OpenDSLRCam/config.cfg"
 WEB_EXPORT_DIR = "/home/pi/OpenDSLRCam/web"
 
+# Sicherstellen, dass die Verzeichnisse existieren
 os.makedirs(IMAGE_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 os.makedirs(WEB_EXPORT_DIR, exist_ok=True)
 
-def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        save_config(INTERVAL, UPLOAD_SERVER)
-    with open(CONFIG_FILE, "r") as f:
-        lines = f.readlines()
-        return int(lines[0].strip()), lines[1].strip()
-
-def save_config(interval, upload_server):
-    with open(CONFIG_FILE, "w") as f:
-        f.write(f"{interval}\n{upload_server}\n")
-
-INTERVAL, UPLOAD_SERVER = load_config()
-
-def capture_image():
-    timestamp = time.strftime("%Y%m%d-%H%M%S")
-    filename = f"{IMAGE_DIR}/{timestamp}.jpg"
+# Funktion zum Deaktivieren von gvfs-gphoto2
+def disable_gvfs_gphoto2():
     try:
-        os.system(f"gphoto2 --capture-image-and-download --filename {filename}")
-        log(f"Bild aufgenommen: {filename}")
-        generate_web_gallery()
-        return filename
+        os.system("sudo systemctl stop gvfs-gphoto2-volume-monitor")
+        os.system("sudo systemctl disable gvfs-gphoto2-volume-monitor")
+        log("gvfs-gphoto2 Dienst gestoppt und deaktiviert.")
     except Exception as e:
-        log(f"Fehler bei der Aufnahme: {str(e)}")
-        return None
+        log(f"Fehler beim Deaktivieren von gvfs-gphoto2: {str(e)}")
 
-def upload_image(filepath):
-    if filepath and os.path.exists(filepath):
-        try:
-            os.system(f"curl -T {filepath} {UPLOAD_SERVER}")
-            log(f"Bild hochgeladen: {filepath}")
-        except Exception as e:
-            log(f"Fehler beim Hochladen: {str(e)}")
+# Funktion zum Erstellen der udev-Regel
+def create_udev_rule():
+    try:
+        rule = 'ATTRS{idVendor}=="04a9", ATTRS{idProduct}=="32b4", ENV{UDISKS_IGNORE}="1"\n'
+        with open("/etc/udev/rules.d/99-camera.rules", "w") as f:
+            f.write(rule)
+        os.system("sudo udevadm control --reload-rules")
+        log("udev-Regel zur Verhinderung des automatischen Mountens der Kamera erstellt.")
+    except Exception as e:
+        log(f"Fehler beim Erstellen der udev-Regel: {str(e)}")
 
-def auto_capture():
-    global INTERVAL
-    while True:
-        image = capture_image()
-        if image:
-            upload_image(image)
-        else:
-            restart_gphoto2()
-        time.sleep(INTERVAL)
+# Funktion zum Starten des Programms
+def start_program():
+    # Deaktivieren des gvfs-gphoto2-Dienstes
+    disable_gvfs_gphoto2()
 
-def restart_gphoto2():
-    log("Neustart von gphoto2...")
-    os.system("sudo killall -9 gphoto2")
-    time.sleep(2)
-    os.system("gphoto2 --auto-detect")
+    # Erstellen der udev-Regel
+    create_udev_rule()
 
-def log(message):
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    with open(LOG_FILE, "a") as log_file:
-        log_file.write(f"[{timestamp}] {message}\n")
+    # Weiter mit der Initialisierung der Anwendung
+    log("OpenDSLRCam startet...")
+    # Weitere Programmlogik hier, z.B. Start der Flask-App, Bildaufnahme usw.
 
-def generate_web_gallery():
-    images = sorted(os.listdir(IMAGE_DIR), reverse=True)[:100]
-    image_list = [f"/images/{img}" for img in images]
-    
-    js_code = f'''
-    <script>
-        var images = {image_list};
-        var currentIndex = 0;
-        function showImage(index) {{
-            document.getElementById("galleryImage").src = images[index];
-        }}
-        function nextImage() {{
-            if (currentIndex < images.length - 1) currentIndex++;
-            showImage(currentIndex);
-        }}
-        function prevImage() {{
-            if (currentIndex > 0) currentIndex--;
-            showImage(currentIndex);
-        }}
-        window.onload = function() {{
-            showImage(0);
-        }};
-    </script>
-    <div style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
-        <button onclick="prevImage()" style="margin: 10px;">Zurück</button>
-        <img id="galleryImage" src="" style="max-width: 100%; height: auto;">
-        <button onclick="nextImage()" style="margin: 10px;">Weiter</button>
-    </div>
-    '''
-    
-    with open(f"{WEB_EXPORT_DIR}/gallery.js", "w") as f:
-        f.write(js_code)
-    log("Web-Galerie JavaScript generiert.")
-
+# Flask Web-GUI Routen
 @app.route('/')
 def index():
     with open(LOG_FILE, "r") as f:
@@ -137,9 +84,25 @@ def restart():
     os.system("sudo systemctl restart opendslrcam.service")
     return "Service wird neu gestartet..."
 
+# Starte Flask-Webserver in separatem Thread
 def start_flask():
     app.run(host='0.0.0.0', port=5000, debug=False)
 
+# Starte automatische Bildaufnahme in separatem Thread
+def auto_capture():
+    global INTERVAL
+    while True:
+        image = capture_image()
+        if image:
+            upload_image(image)
+        else:
+            restart_gphoto2()
+        time.sleep(INTERVAL)
+
+# Starte das Programm
+start_program()
+
+# Starte Flask-Webserver und automatische Bildaufnahme
 flask_thread = threading.Thread(target=start_flask)
 flask_thread.daemon = True
 flask_thread.start()

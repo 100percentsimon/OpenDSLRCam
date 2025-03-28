@@ -1,100 +1,42 @@
-OpenDSLRCam - Open Source DSLR Webcam System
+# OpenDSLRCam - DSLR Webcam Steuerung
 
-✨ Was ist OpenDSLRCam?
+## Installation
 
-OpenDSLRCam ist ein Open-Source-Tool für Raspberry Pi, das DSLR-Kameras als hochwertige Webcams oder Zeitraffer-Kameras nutzt. Das System ermöglicht automatisierte Aufnahmen, Cloud-Uploads, eine Web-Oberfläche zur Steuerung und ein automatisches Update-System.
+1. Lade das Repository herunter:
+    ```bash
+    git clone https://github.com/100percentsimon/OpenDSLRCam.git
+    cd OpenDSLRCam
+    ```
 
-💡 Funktionen
+2. Installiere die notwendigen Python-Abhängigkeiten:
+    ```bash
+    pip3 install -r requirements.txt
+    ```
 
-✔ Unterstützung für alle gphoto2-kompatiblen Kameras (Canon, Nikon, Sony, usw.)
+3. Stelle sicher, dass gphoto2 installiert ist:
+    ```bash
+    sudo apt install gphoto2
+    ```
 
-✔ Web-GUI zur einfachen Steuerung & Konfiguration (ohne Terminal!)
+4. Kopiere die Konfigurationsdatei (config.cfg) an den richtigen Ort und passe sie an.
 
-✔ Einstellbares Aufnahmeintervall (z. B. alle 15 Minuten ein Foto)
+5. Aktiviere den Systemdienst:
+    ```bash
+    sudo cp opendslrcam.service /etc/systemd/system/
+    sudo systemctl enable opendslrcam.service
+    sudo systemctl start opendslrcam.service
+    ```
 
-✔ Upload auf Webserver (FTP, SFTP, WebDAV, Google Drive, Dropbox optional)
+6. Greife über deinen Webbrowser auf die Verwaltung zu:
+    - `http://<RaspberryPi-IP>:5000`
 
-✔ Selbstüberwachung & Neustart bei Fehlern
+---
 
-✔ Automatische Updates mit nur einem Klick
+## Benutzung
 
-✔ Installation als .deb-Paket für einfache Nutzung
+- Die Bilder werden automatisch alle 15 Minuten aufgenommen und hochgeladen.
+- Die Web-Galerie wird automatisch auf der Webseite angezeigt und kann aufgerufen werden.
 
-⚙️ Installation
+## Lizenz
 
-Voraussetzungen:
-
-Raspberry Pi (Model B+ bis Raspberry Pi 5)
-
-Python 3.x
-
-gphoto2 installiert
-
-1. OpenDSLRCam herunterladen & installieren
-
-sudo apt update && sudo apt install -y python3 python3-pyqt5 python3-flask gphoto2 curl
-
-# Repository klonen
-git clone https://github.com/DEIN-GITHUB/OpenDSLRCam.git
-cd OpenDSLRCam
-
-# Skript ausführen
-python3 src/opendslrcam.py
-
-2. Web-Oberfläche starten
-
-Nach dem Start ist die Web-GUI unter http://localhost:5000 erreichbar.
-
-3. Optional: Installation als .deb-Paket
-
-dpkg -i OpenDSLRCam.deb
-
-🔧 Nutzung
-
-Manuelles Foto aufnehmen
-
-➡️ Web-GUI öffnen: http://localhost:5000
-
-Button "Foto aufnehmen" klicken
-
-Automatische Fotoaufnahmen
-
-Standardintervall: alle 15 Minuten
-
-Kann in der Web-GUI angepasst werden
-
-Upload-Funktion
-
-Konfigurierbar über config.json
-
-Unterstützte Methoden: FTP, SFTP, WebDAV, Google Drive, Dropbox
-
-🚀 Update & Wartung
-
-Automatische Updates aktivieren
-
-python3 src/opendslrcam.py --update
-
-Logdateien anzeigen
-
-tail -f logs/opendslrcam.log
-
-💪 Mitmachen & Beitragen
-
-OpenDSLRCam ist ein Open-Source-Projekt! Du kannst es weiterentwickeln und verbessern:
-
-Forke das Repository auf GitHub
-
-Erstelle neue Features oder behebe Bugs
-
-Stelle einen Pull Request
-
-Wir freuen uns über deine Ideen & Unterstützung!
-
-GitHub: https://github.com/DEIN-GITHUB/OpenDSLRCam
-
-🛠 Support
-
-Falls du Probleme hast, kannst du uns gerne über die GitHub-Issues kontaktieren!
-
-Erstellt von: Simon Grässle Lizenz: MIT License
+OpenDSLRCam ist Open Source und unter der MIT Lizenz veröffentlicht.

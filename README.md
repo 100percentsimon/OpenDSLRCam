@@ -40,3 +40,21 @@
 ## Lizenz
 
 OpenDSLRCam ist Open Source und unter der MIT Lizenz veröffentlicht.
+
+
+
+
+##Verzeichnisstruktur
+
+OpenDSLRCam/
+├── app.py
+├── requirements.txt
+├── config.cfg
+├── opendslrcam.service
+├── .gitignore
+├── /images      <- Bilder werden hier gespeichert
+├── /logs        <- Log-Dateien werden hier gespeichert
+├── /web
+│   ├── gallery.js
+│   └── index.html
+└── README.md

@@ -1,7 +1,8 @@
 #!/bin/bash
+
 # Update und Installation der benötigten Pakete
 sudo apt update
-sudo apt install -y python3-pip python3-flask python3-gphoto2 curl git
+sudo apt install -y python3-pip python3-gphoto2 curl git
 sudo apt install -y python3-venv
 
 # Erstelle und aktiviere ein virtuelles Python-Umfeld
@@ -10,7 +11,7 @@ source /home/pi/OpenDSLRCam/venv/bin/activate
 
 # Installiere Python-Abhängigkeiten
 pip install --upgrade pip
-pip install flask gphoto2
+pip install gphoto2
 
 # Klone das GitHub-Repository
 git clone https://github.com/DeinGitHubRepo/OpenDSLRCam.git /home/pi/OpenDSLRCam

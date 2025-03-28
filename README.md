@@ -1,73 +1,156 @@
+
 # OpenDSLRCam
 
-OpenDSLRCam ist ein automatisiertes System, das eine DSLR-Kamera steuert, regelmäßig Fotos aufnimmt, diese verkleinert, lokal speichert und anschließend auf einen FTP-Server hochlädt. Es wird in Python ausgeführt und verwendet `gphoto2` zur Steuerung der Kamera.
+OpenDSLRCam ist ein Python-basiertes Tool, das eine Kamera über `gphoto2` steuert, regelmäßig Fotos aufnimmt und diese automatisch auf einen FTP-Server hochlädt. Es bietet auch eine einfache Möglichkeit, Systemprozesse zu überwachen und zu steuern, die mit der Kamera und dem FTP-Upload zusammenhängen.
 
-## Funktionen
-- **Kameraerkennung und Fotoaufnahme**: Das Skript prüft alle 10 Minuten, ob eine Kamera angeschlossen ist, und nimmt dann ein Foto auf.
-- **Bildbearbeitung**: Das aufgenommene Bild wird auf 1920x1080px verkleinert.
-- **FTP-Upload**: Das Bild wird anschließend auf einen FTP-Server hochgeladen.
-- **Archivierung**: Das Bild wird lokal gespeichert und archiviert.
+## Features
+
+- Aufnahme von Fotos mit einer Canon-Kamera oder einer kompatiblen Kamera.
+- Automatisches Hochladen der Fotos auf einen FTP-Server.
+- Anpassbare Intervalle für Fotoaufnahmen und das Beenden von gphoto2-Prozessen.
+- Speicherung der Fotos lokal und im Archiv.
+- Systemd-Dienst zur automatischen Ausführung im Hintergrund.
 
 ## Voraussetzungen
-- Raspberry Pi (oder ein anderes Linux-basiertes System)
-- Eine DSLR-Kamera, die mit `gphoto2` kompatibel ist
-- Python 3
-- Die `gphoto2`-Software muss auf dem System installiert sein
-- Die Python-Pakete `ftplib` und `Pillow` müssen installiert sein
+
+Bevor du das Projekt verwenden kannst, stelle sicher, dass du die folgenden Voraussetzungen erfüllst:
+
+- Ein Raspberry Pi oder ein Linux-Server
+- `gphoto2`-Tool zur Steuerung der Kamera
+- Python 3.7+ und `pip` für Python-Paketmanagement
+
+### Installiere Abhängigkeiten
+
+Stelle sicher, dass `gphoto2` und Python 3 sowie die entsprechenden Abhängigkeiten installiert sind:
+
+```bash
+sudo apt-get update
+sudo apt-get install gphoto2 python3 python3-pip python3-venv
+```
 
 ## Installation
 
-1. **Systemvoraussetzungen**:
-   - Installiere `gphoto2`:
-     ```bash
-     sudo apt-get update
-     sudo apt-get install gphoto2
-     ```
+### 1. Repository klonen
 
-2. **Python-Abhängigkeiten installieren**:
-   - Erstelle und aktiviere eine virtuelle Umgebung:
-     ```bash
-     python3 -m venv venv
-     source venv/bin/activate
-     ```
-   - Installiere die Abhängigkeiten:
-     ```bash
-     pip install -r requirements.txt
-     ```
+Klonen Sie das GitHub-Repository auf dein System:
 
-3. **Konfiguration**:
-   - Kopiere die `config.cfg`-Datei und passe die Werte für FTP-Server, Benutzername und Passwort an.
-   - Passe die Speicherpfade in der `config.cfg` an, wenn nötig.
+```bash
+git clone https://github.com/USERNAME/OpenDSLRCam.git
+cd OpenDSLRCam
+```
 
-4. **Systemd Service (optional)**:
-   - Kopiere die Datei `opendslrcam.service` nach `/etc/systemd/system/`:
-     ```bash
-     sudo cp opendslrcam.service /etc/systemd/system/
-     sudo systemctl daemon-reload
-     sudo systemctl enable opendslrcam.service
-     sudo systemctl start opendslrcam.service
-     ```
+### 2. Virtuelle Umgebung einrichten
 
-5. **Starten des Programms**:
-   - Du kannst das Programm auch manuell starten:
-     ```bash
-     python app.py
-     ```
+Erstelle und aktiviere eine virtuelle Umgebung, um Abhängigkeiten zu installieren:
 
-## Dateien
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
 
-### `app.py`
+### 3. Abhängigkeiten installieren
 
-Dies ist das Hauptskript, das alle Funktionen des Programms ausführt: Fotoaufnahme, Bildbearbeitung und FTP-Upload.
+Installiere die benötigten Python-Pakete:
 
-### `config.cfg`
+```bash
+pip install -r requirements.txt
+```
 
-Die Konfigurationsdatei, in der du FTP-Server, Pfade und Intervalle einstellen kannst.
+### 4. Konfigurationsdatei anpassen
 
-### `opendslrcam.service`
+Bearbeite die Konfigurationsdatei `config.cfg`, um die FTP-Server-Informationen und die gewünschten Intervallwerte zu setzen. Beispiel:
 
-Dies ist eine systemd-Service-Datei, mit der du das Skript als Dienst auf deinem Raspberry Pi ausführen kannst.
+```ini
+[FTP]
+SERVER = ftp.example.com       # Dein FTP-Server
+USER = username                # Dein FTP-Benutzername
+PASSWORD = password            # Dein FTP-Passwort
+REMOTE_PATH = /remote/path/    # Zielordner auf dem FTP-Server
 
-### `requirements.txt`
+[Settings]
+PHOTO_INTERVAL = 600           # Interval in Sekunden zwischen Fotoaufnahmen (z.B. 600 für alle 10 Minuten)
+KILL_INTERVAL = 3600           # Interval in Sekunden für den Kill-Befehl (z.B. 3600 für jede Stunde)
+```
 
-Diese Datei listet alle Python-Abhängigkeiten auf:
+### 5. Systemd-Dienst einrichten
+
+Damit das Programm automatisch im Hintergrund läuft, kannst du einen `systemd`-Dienst einrichten. Erstelle eine Datei für den Dienst:
+
+```bash
+sudo nano /etc/systemd/system/opendslrcam.service
+```
+
+Füge den folgenden Inhalt in die Datei ein:
+
+```ini
+[Unit]
+Description=OpenDSLRCam Service
+After=network.target
+
+[Service]
+ExecStart=/home/pi/OpenDSLRCam/venv/bin/python3 /home/pi/OpenDSLRCam/app.py
+WorkingDirectory=/home/pi/OpenDSLRCam
+Environment="PATH=/home/pi/OpenDSLRCam/venv/bin"
+Restart=always
+User=pi
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Speichere die Datei und schließe den Editor.
+
+### 6. Dienst aktivieren und starten
+
+Aktiviere den Dienst, damit er bei jedem Systemstart automatisch ausgeführt wird:
+
+```bash
+sudo systemctl enable opendslrcam.service
+sudo systemctl start opendslrcam.service
+```
+
+### 7. Überprüfen, ob der Dienst läuft
+
+Du kannst den Status des Dienstes überprüfen, um sicherzustellen, dass er ordnungsgemäß läuft:
+
+```bash
+sudo systemctl status opendslrcam.service
+```
+
+## Nutzung
+
+Sobald der Dienst gestartet wurde, wird das Programm alle 10 Minuten automatisch ein Foto aufnehmen und es auf den angegebenen FTP-Server hochladen. Der Dienst überprüft auch regelmäßig die Verbindung zur Kamera und startet den Dienst neu, falls ein Problem auftritt.
+
+### Anpassung der Intervalle
+
+- **PHOTO_INTERVAL**: Das Intervall für Fotoaufnahmen in Sekunden (z.B. `600` für 10 Minuten).
+- **KILL_INTERVAL**: Das Intervall für das Beenden von gphoto2-Prozessen in Sekunden (z.B. `3600` für 1 Stunde).
+
+### Fotoaufnahme und FTP-Upload
+
+- Das Programm speichert das Foto zunächst lokal und benennt es in `LatestImage.jpg` um.
+- Das Bild wird auf die Auflösung von `1920x1080` heruntergerechnet.
+- Das Foto wird im lokalen Ordner `Images` und zusätzlich im `archives` Ordner für die Archivierung gespeichert.
+- Danach wird das Bild auf den angegebenen FTP-Server hochgeladen.
+
+## Logs
+
+Die Logs des Programms werden in der Datei `opendslrcam.log` gespeichert. Du kannst die Logs mit folgendem Befehl einsehen:
+
+```bash
+tail -f /home/pi/OpenDSLRCam/opendslrcam.log
+```
+
+## Fehlerbehebung
+
+- **Fehler beim FTP-Upload**: Überprüfe die FTP-Serveradresse, den Benutzernamen und das Passwort in der `config.cfg`.
+- **Fehler bei der Kameraerkennung**: Stelle sicher, dass die Kamera ordnungsgemäß angeschlossen ist und von `gphoto2` unterstützt wird.
+- **gphoto2-Prozesse beenden**: Wenn das Programm Probleme mit laufenden `gphoto2`-Prozessen hat, wird der Kill-Befehl automatisch ausgeführt. Falls dies nicht funktioniert, kannst du manuell den Befehl ausführen:
+
+```bash
+pkill -f gphoto2
+```
+
+## Lizenz
+
+OpenDSLRCam ist unter der [MIT-Lizenz](LICENSE) lizenziert.

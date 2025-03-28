@@ -2,6 +2,7 @@ import os
 import time
 import subprocess
 import threading
+import psutil  # Zum Überwachen der Systemressourcen
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 
 # Flask Web-GUI
@@ -14,6 +15,10 @@ IMAGE_DIR = "/home/pi/OpenDSLRCam/images"
 LOG_FILE = "/home/pi/OpenDSLRCam/logs/opendslrcam.log"
 CONFIG_FILE = "/home/pi/OpenDSLRCam/config.cfg"
 WEB_EXPORT_DIR = "/home/pi/OpenDSLRCam/web"
+
+# Maximal erlaubte CPU- und RAM-Nutzung in Prozent
+MAX_CPU_USAGE = 80
+MAX_MEMORY_USAGE = 80
 
 # Sicherstellen, dass die Verzeichnisse existieren
 os.makedirs(IMAGE_DIR, exist_ok=True)
@@ -34,27 +39,31 @@ def save_config(interval, upload_server):
 # Initiale Konfiguration laden
 INTERVAL, UPLOAD_SERVER = load_config()
 
-# Funktion zur Überprüfung, ob gphoto2-Prozesse laufen, und zum Beenden
-def ensure_single_camera_access():
-    # Beende alle gphoto2 Prozesse, die im Hintergrund laufen könnten
-    os.system("sudo killall -9 gphoto2")
-    time.sleep(2)  # Warten, damit Prozesse richtig beendet werden können
+# Funktion zur Überprüfung der Systemressourcen
+def check_system_resources():
+    # CPU- und RAM-Auslastung überwachen
+    cpu_usage = psutil.cpu_percent(interval=1)  # CPU-Auslastung in %
+    memory_usage = psutil.virtual_memory().percent  # RAM-Auslastung in %
 
-    # Überprüfe, ob gphoto2 noch läuft
-    process_check = os.popen("ps aux | grep gphoto2").read()
-    if 'gphoto2' not in process_check:
-        log("Keine gphoto2 Prozesse gefunden. Kamera wird nun erkannt.")
-    else:
-        log("Es laufen noch gphoto2 Prozesse. Diese wurden gestoppt und die Kamera wird jetzt neu erkannt.")
-    
-    # Starte gphoto2 neu
-    os.system("gphoto2 --auto-detect")
+    log(f"CPU-Auslastung: {cpu_usage}% | RAM-Auslastung: {memory_usage}%")
+
+    # Wenn CPU oder RAM die maximalen Schwellenwerte überschreiten, pausieren
+    if cpu_usage > MAX_CPU_USAGE or memory_usage > MAX_MEMORY_USAGE:
+        log("System überlastet, warte auf geringere Auslastung...")
+        return False
+    return True
 
 # Funktion zur Aufnahme eines Bildes
 def capture_image():
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     filename = f"{IMAGE_DIR}/{timestamp}.jpg"
+    
     try:
+        # Überprüfen, ob Systemressourcen verfügbar sind
+        if not check_system_resources():
+            log("Warte auf genügend Systemressourcen...")
+            return None
+
         # Überprüfen und sicherstellen, dass keine anderen gphoto2-Prozesse laufen
         ensure_single_camera_access()
 
@@ -71,6 +80,12 @@ def capture_image():
 def upload_image(filepath):
     if filepath and os.path.exists(filepath):
         try:
+            # Überprüfen, ob Systemressourcen verfügbar sind
+            if not check_system_resources():
+                log("Warte auf genügend Systemressourcen für den Upload...")
+                return
+
+            # Bild hochladen
             os.system(f"curl -T {filepath} {UPLOAD_SERVER}")
             log(f"Bild hochgeladen: {filepath}")
         except Exception as e:
@@ -80,11 +95,13 @@ def upload_image(filepath):
 def auto_capture():
     global INTERVAL
     while True:
-        image = capture_image()
-        if image:
-            upload_image(image)
-        else:
-            restart_gphoto2()
+        # Warte auf genügend Systemressourcen, bevor ein Bild aufgenommen wird
+        if check_system_resources():
+            image = capture_image()
+            if image:
+                upload_image(image)
+            else:
+                restart_gphoto2()
         time.sleep(INTERVAL)
 
 # Neustart von gphoto2 bei Problemen

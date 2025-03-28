@@ -3,7 +3,7 @@ Description=OpenDSLRCam Service
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /home/pi/OpenDSLRCam/app.py
+ExecStart=/home/pi/OpenDSLRCam/venv/bin/python3 /home/pi/OpenDSLRCam/app.py
 WorkingDirectory=/home/pi/OpenDSLRCam
 User=pi
 Group=pi

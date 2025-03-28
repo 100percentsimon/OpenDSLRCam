@@ -1,2 +1,4 @@
-Flask==2.2.2
 gphoto2==2.5.1
+ftplib
+Pillow
+

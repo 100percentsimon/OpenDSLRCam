@@ -1,98 +1,142 @@
 import os
 import time
 import subprocess
+import logging
+from datetime import datetime
+from ftplib import FTP
+from PIL import Image
 import configparser
-import threading
 
-# Standardwerte
-DEFAULT_INTERVAL = 900  # 15 Minuten (900 Sekunden)
-DEFAULT_FTP_HOST = "ftp://example.com"
-DEFAULT_UPLOAD_SERVER = "/images"
-DEFAULT_FTP_USERNAME = "user123"
-DEFAULT_FTP_PASSWORD = "mypassword"
-CONFIG_FILE = "/home/pi/OpenDSLRCam/config.cfg"
-LOG_FILE = "/home/pi/OpenDSLRCam/logs/opendslrcam.log"
-IMAGE_DIR = "/home/pi/OpenDSLRCam/images"
-ARCHIVE_DIR = "/home/pi/OpenDSLRCam/archives"
+# Konfiguration aus der config.cfg Datei laden
+config = configparser.ConfigParser()
+config.read('/home/pi/OpenDSLRCam/config.cfg')
 
-# Sicherstellen, dass die Verzeichnisse existieren
-os.makedirs(IMAGE_DIR, exist_ok=True)
-os.makedirs(ARCHIVE_DIR, exist_ok=True)
+# FTP-Server-Konfiguration
+FTP_SERVER = config.get('FTP', 'FTP_SERVER')
+FTP_USER = config.get('FTP', 'FTP_USER')
+FTP_PASSWORD = config.get('FTP', 'FTP_PASSWORD')
 
-# Konfiguration laden
-def load_config():
-    config = configparser.ConfigParser()
-    config.read(CONFIG_FILE)
-    
-    interval = int(config.get('DEFAULT', 'Interval', fallback=DEFAULT_INTERVAL))
-    ftp_host = config.get('DEFAULT', 'FTPHost', fallback=DEFAULT_FTP_HOST)
-    upload_server = config.get('DEFAULT', 'UploadServer', fallback=DEFAULT_UPLOAD_SERVER)
-    ftp_username = config.get('DEFAULT', 'FTPUsername', fallback=DEFAULT_FTP_USERNAME)
-    ftp_password = config.get('DEFAULT', 'FTPPassword', fallback=DEFAULT_FTP_PASSWORD)
-    
-    return interval, ftp_host, upload_server, ftp_username, ftp_password
+# Ordnerpfade
+LOCAL_SAVE_PATH = config.get('Paths', 'LOCAL_SAVE_PATH')
+IMAGES_FOLDER = config.get('Paths', 'IMAGES_FOLDER')
+ARCHIVES_FOLDER = config.get('Paths', 'ARCHIVES_FOLDER')
+REMOTE_PATH = config.get('Paths', 'REMOTE_PATH')
 
-INTERVAL, FTP_HOST, UPLOAD_SERVER, FTP_USERNAME, FTP_PASSWORD = load_config()
+# Intervalle
+PHOTO_INTERVAL = int(config.get('Settings', 'PHOTO_INTERVAL'))  # Interval für Fotos (in Sekunden)
+KILL_INTERVAL = int(config.get('Settings', 'KILL_INTERVAL'))  # Interval für kill Befehl (in Sekunden)
 
-# Funktion zur Aufnahme eines Bildes
-def capture_image():
-    timestamp = time.strftime("%Y%m%d-%H%M%S")
-    filename = f"{IMAGE_DIR}/{timestamp}.jpg"
+# Logging-Konfiguration
+LOG_FILE = "/home/pi/OpenDSLRCam/opendslrcam.log"
+logging.basicConfig(filename=LOG_FILE, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Sicherstellen, dass die Ordner existieren
+os.makedirs(IMAGES_FOLDER, exist_ok=True)
+os.makedirs(ARCHIVES_FOLDER, exist_ok=True)
+
+def stop_gphoto2_process():
+    """Beende alle gphoto2-Prozesse, falls sie aktiv sind."""
     try:
-        os.system(f"gphoto2 --capture-image-and-download --filename {filename}")
-        log(f"Bild aufgenommen: {filename}")
-        archive_image(filename)
-        return filename
+        logging.info("Überprüfe auf störende gphoto2-Prozesse...")
+        subprocess.run(['pkill', '-f', 'gphoto2'], check=True)
+        logging.info("gphoto2-Prozesse erfolgreich beendet.")
+    except subprocess.CalledProcessError:
+        logging.warning("Kein laufender gphoto2-Prozess gefunden.")
     except Exception as e:
-        log(f"Fehler bei der Aufnahme: {str(e)}")
+        logging.error(f"Fehler beim Beenden von gphoto2: {e}")
+
+def check_camera_connected():
+    """Überprüft, ob die Kamera angeschlossen ist und angesprochen werden kann."""
+    try:
+        result = subprocess.run(['gphoto2', '--auto-detect'], capture_output=True, text=True)
+        if "Canon" in result.stdout:  # Beispiel: Kamera ist von Canon
+            logging.info("Kamera erkannt und bereit.")
+            return True
+        else:
+            logging.warning("Keine Kamera erkannt.")
+            return False
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Fehler bei Kameraerkennung: {e}")
+        return False
+    except Exception as e:
+        logging.error(f"Unbekannter Fehler: {e}")
+        return False
+
+def take_photo():
+    """Macht ein Foto, speichert es lokal und verkleinert es."""
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = "LatestImage.jpg"
+        original_filepath = os.path.join(LOCAL_SAVE_PATH, filename)
+
+        # Foto aufnehmen und speichern
+        logging.info(f"Starte Fotoaufnahme: {filename}")
+        subprocess.run(['gphoto2', '--capture-image-and-download', '--filename', original_filepath], check=True)
+        logging.info(f"Foto gespeichert: {original_filepath}")
+
+        # Foto im 'archives' Ordner speichern
+        archive_filepath = os.path.join(ARCHIVES_FOLDER, f"photo_{timestamp}.jpg")
+        os.rename(original_filepath, archive_filepath)
+        logging.info(f"Originalfoto im Archiv gespeichert: {archive_filepath}")
+
+        # Foto auf 1920x1080 verkleinern und im 'Images' Ordner speichern
+        image = Image.open(archive_filepath)
+        image = image.resize((1920, 1080))
+        image.save(os.path.join(IMAGES_FOLDER, filename))
+        logging.info(f"Verkleinertes Bild gespeichert: {os.path.join(IMAGES_FOLDER, filename)}")
+
+        return filename
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Fehler bei Fotoaufnahme: {e}")
+        return None
+    except Exception as e:
+        logging.error(f"Unbekannter Fehler bei Fotoaufnahme: {e}")
         return None
 
-# Funktion zum Archivieren des Bildes
-def archive_image(filepath):
-    timestamp = time.strftime("%Y%m%d-%H%M%S")
-    archive_filepath = f"{ARCHIVE_DIR}/{timestamp}.jpg"
+def upload_to_ftp(filename):
+    """Lädt das aufgenommene Foto auf einen FTP-Server hoch."""
     try:
-        os.rename(filepath, archive_filepath)
-        log(f"Bild archiviert: {archive_filepath}")
+        ftp = FTP(FTP_SERVER)
+        ftp.login(FTP_USER, FTP_PASSWORD)
+
+        local_filepath = os.path.join(IMAGES_FOLDER, filename)
+        remote_filepath = REMOTE_PATH + filename
+
+        with open(local_filepath, "rb") as file:
+            ftp.storbinary(f"STOR {remote_filepath}", file)
+
+        ftp.quit()
+        logging.info(f"Foto erfolgreich hochgeladen: {remote_filepath}")
     except Exception as e:
-        log(f"Fehler beim Archivieren: {str(e)}")
+        logging.error(f"Fehler beim FTP-Upload: {e}")
+def main():
+    """Hauptprogramm-Loop"""
+    camera_connected = False
 
-# Automatische Aufnahme-Funktion
-def auto_capture():
-    global INTERVAL
     while True:
-        capture_image()
-        time.sleep(INTERVAL)
+        # Überprüfe, ob die Kamera verbunden ist
+        if check_camera_connected():
+            # Wenn die Kamera erkannt wird, aber noch nicht verbunden war, setze die Variable
+            if not camera_connected:
+                camera_connected = True
+                logging.info("Kamera erkannt. Starte Fotoaufnahme.")
+            
+            # Foto aufnehmen
+            filename = take_photo()
+            if filename:
+                # Foto erfolgreich aufgenommen, jetzt hochladen
+                upload_to_ftp(filename)
+        
+        # Wenn Kamera nicht mehr verbunden, führe Bereinigung durch
+        elif camera_connected:
+            camera_connected = False
+            logging.warning("Kamera wurde getrennt! Beende gphoto2-Prozesse.")
+            stop_gphoto2_process()
 
-# Logging-Funktion
-def log(message):
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    with open(LOG_FILE, "a") as log_file:
-        log_file.write(f"[{timestamp}] {message}\n")
+        # Alle X Sekunden ein neues Foto aufnehmen, unabhängig von der Kameraverbindung
+        logging.info(f"Warte {PHOTO_INTERVAL} Sekunden, bevor das nächste Foto aufgenommen wird.")
+        time.sleep(PHOTO_INTERVAL)  # Warten für PHOTO_INTERVAL Sekunden, bevor das nächste Foto aufgenommen wird
 
-# Überwachung und Statusabfrage
-def show_status():
-    with open(LOG_FILE, "r") as f:
-        logs = f.readlines()[-10:]
-    print("\n--- Letzte 10 Log-Einträge ---")
-    for log_entry in logs:
-        print(log_entry.strip())
-    print("\n--- Aktuelle Einstellungen ---")
-    print(f"Intervall: {INTERVAL} Sekunden")
-    print(f"FTP Host: {FTP_HOST}")
-    print(f"Upload Server: {UPLOAD_SERVER}")
-    print(f"Benutzername: {FTP_USERNAME}")
-    print("\n--- Ende der Statusausgabe ---")
 
-# Startet die automatische Aufnahme und Statusüberwachung im Hintergrund
-def start_program():
-    threading.Thread(target=auto_capture, daemon=True).start()
-    show_status()
-
-if __name__ == '__main__':
-    start_program()
-    
-    # Warte, bis der Benutzer das Programm stoppt
-    while True:
-        time.sleep(60)  # Alle 60 Sekunden die Log-Ausgabe anzeigen
-        show_status()
+if __name__ == "__main__":
+    main()

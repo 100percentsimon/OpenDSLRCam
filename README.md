@@ -35,7 +35,7 @@ sudo apt-get install gphoto2 python3 python3-pip python3-venv
 Klonen Sie das GitHub-Repository auf dein System:
 
 ```bash
-git clone https://github.com/USERNAME/OpenDSLRCam.git
+git clone https://github.com/100percentsimon/OpenDSLRCam
 cd OpenDSLRCam
 ```
 

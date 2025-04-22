@@ -60,6 +60,12 @@ pip install -r requirements.txt
 
 Bearbeite die Konfigurationsdatei `config.cfg`, um die FTP-Server-Informationen und die gewünschten Intervallwerte zu setzen. Beispiel:
 
+Ändere die Konfigurationsdatei mit folgendem Befehl:
+
+```bash
+sudo nano /config.cfg
+```
+
 ```ini
 [FTP]
 SERVER = ftp.example.com       # Dein FTP-Server
